@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smoke test - Lojinha GESCS</title>
+    <style>
+        body { font-family: sans-serif; padding: 24px; }
+        button { font-size: 22px; padding: 18px 24px; width: 100%; margin: 10px 0; }
+        #log { margin-top: 20px; font-size: 16px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<h2>Teste da ponte de pagamento</h2>
+<p>Use esta página no terminal DEBUG para validar o SDK. Substitua depois pelo build da sua UI React.</p>
+
+<button onclick="testar('credito')">Cobrar R$ 1,00 no CRÉDITO</button>
+<button onclick="testar('pix')">Cobrar R$ 1,00 no PIX</button>
+
+<div id="log"></div>
+
+<script>
+    const pendentes = {};
+    window.__resultadoPagamento = function (r) {
+      const cb = pendentes[r.callbackId];
+      if (cb) { delete pendentes[r.callbackId]; cb(r); }
+    };
+
+    function cobrar(valorCentavos, tipo, referencia) {
+      return new Promise((resolve, reject) => {
+        if (typeof window.AndroidPagamento === "undefined") {
+          reject(new Error("Ponte nativa ausente — você está no navegador, não na maquininha."));
+          return;
+        }
+        const id = "pg_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+        pendentes[id] = resolve;
+        window.AndroidPagamento.pagar(valorCentavos, tipo, referencia, id);
+      });
+    }
+
+    async function testar(tipo) {
+      const log = document.getElementById("log");
+      log.textContent = "Iniciando cobrança...";
+      try {
+        const r = await cobrar(100, tipo, "TESTE001");
+        log.textContent = "Resultado:\n" + JSON.stringify(r, null, 2);
+      } catch (e) {
+        log.textContent = "Erro: " + e.message;
+      }
+    }
+</script>
+</body>
+</html>

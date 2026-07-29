@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'br.org.gescs.lojinha'
+    compileSdk 34
+
+    defaultConfig {
+        // applicationId == packageName. Não altere depois de publicar (nova homologação)
+        applicationId "br.org.gescs.lojinha"
+        minSdk 25   // Android 7.1 - minimo para funcionar na Moderninha Smart 2
+        targetSdk 28    // conservador para o Android antigo das maquininhas
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optime.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
+
+    // SDK de pagamento embarcado na Moderninha Smart (PlugPag)
+    // COnfrime a versão mais recente do GitHub oficial do wraper antes de compilar
+    implementation 'br.com.uol.pagsetup.plugpagservice.wrapper:wrapper:1.30.52'
+}

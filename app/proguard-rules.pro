@@ -1,0 +1,1 @@
+# Regras de ProGuard/R8. Deixar vazio por enquanto

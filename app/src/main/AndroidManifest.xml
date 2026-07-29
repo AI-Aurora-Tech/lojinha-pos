@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      TODO (PlugPag) — ETAPA OBRIGATÓRIA ANTES DE RODAR NO TERMINAL:
+      Adicionar aqui a permissão de bind ao PlugPagService e o intent-filter que
+      registra este app como aplicação de pagamento (para receber os Intents de
+      inserção de cartão). As strings EXATAS variam conforme a versão do wrapper,
+      então copie-as da documentação oficial "Guide" do PlugPagServiceWrapper
+      (seção AndroidManifest). Não invente esses valores — use os da doc da sua versão.
+    -->
+
+    <application
+        android:allowBackup="false"
+        android:label="Lojinha GESCS"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- TODO (PlugPag): intent-filter adicional de app de pagamento padrão (ver doc). -->
+
+        </activity>
+    </application>
+</manifest>
