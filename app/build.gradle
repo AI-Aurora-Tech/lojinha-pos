@@ -14,6 +14,9 @@ android {
         targetSdk 28    // conservador para o Android das maquininhas
         versionCode 1
         versionName "1.0.0"
+
+        // Página do GESCS que esta maquininha abre (definida em gradle.properties).
+        resValue "string", "url_sistema", project.findProperty("urlSistema") ?: "https://gescs.vercel.app/maquininha"
     }
 
     buildTypes {
@@ -46,9 +49,6 @@ dependencies {
 
     // SDK de pagamento embarcado na Moderninha Smart (PlugPag).
     // Versão mais recente em https://github.com/pagseguro/PlugPagServiceWrapper
+    // Mesma versão usada pelo app de exemplo oficial (SmartCoffee).
     implementation 'br.com.uol.pagseguro.plugpagservice.wrapper:wrapper:1.35.0'
-
-    // O wrapper usa RxJava 2 internamente, mas o POM dele não declara a dependência.
-    implementation 'io.reactivex.rxjava2:rxjava:2.2.21'
-    implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
 }

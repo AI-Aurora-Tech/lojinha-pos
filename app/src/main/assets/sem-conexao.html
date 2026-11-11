@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sem conexão - Lojinha GESCS</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 24px; background: #0f172a; color: #fff; text-align: center; }
+    h2 { margin-top: 64px; }
+    p { color: #94a3b8; }
+    button, a { display: block; font-size: 20px; padding: 16px; margin: 16px 0; border: 0; border-radius: 10px;
+                background: #2563eb; color: #fff; text-decoration: none; width: 100%; box-sizing: border-box; }
+    a { background: #334155; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h2>Sem conexão com o GESCS</h2>
+  <p>A maquininha precisa de internet (Wi-Fi ou chip) para receber as vendas do sistema.</p>
+  <button id="tentar">Tentar de novo</button>
+  <a href="teste-maquininha.html">Tela de teste da maquininha (sem internet)</a>
+  <script>
+    var voltar = new URLSearchParams(location.search).get("voltar");
+    document.getElementById("tentar").onclick = function () {
+      if (voltar) location.href = voltar; else history.back();
+    };
+    // Tenta voltar sozinho a cada 15 segundos.
+    setInterval(function () { if (voltar && navigator.onLine) location.href = voltar; }, 15000);
+  </script>
+</body>
+</html>

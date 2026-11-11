@@ -3,8 +3,10 @@ package br.org.gescs.lojinha
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -12,16 +14,19 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 
 /**
- * Casca Android que roda DENTRO da Moderninha Smart 2: carrega a UI web da lojinha
- * numa WebView e expõe a ponte de pagamento (PagBankBridge) para o JavaScript.
+ * Casca Android que roda DENTRO da Moderninha Smart 2: abre a página /maquininha
+ * do GESCS numa WebView e expõe a ponte de pagamento (PagBankBridge) para ela.
  *
- * Fluxo: vendedora monta a venda na UI → clica "Concluir venda" → o JS chama
- * window.AndroidPagamento.pagar(...) → a maquininha pede o cartão ao cliente.
+ * Fluxo: a vendedora confirma a venda no GESCS (celular/PC) → o GESCS grava a
+ * cobrança no Supabase → a página /maquininha, aberta aqui, pega a cobrança e
+ * chama window.AndroidPagamento.pagar(...) → a maquininha pede o cartão.
  */
 class MainActivity : Activity() {
 
     private lateinit var webView: WebView
     private lateinit var bridge: PagBankBridge
+    private lateinit var urlSistema: String
+    private lateinit var hostsPermitidos: Set<String>
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,6 +38,10 @@ class MainActivity : Activity() {
         // Em builds de debug dá para inspecionar a WebView pelo chrome://inspect no PC.
         val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         WebView.setWebContentsDebuggingEnabled(debuggable)
+
+        // Endereço do GESCS: definido em gradle.properties (urlSistema).
+        urlSistema = getString(R.string.url_sistema)
+        hostsPermitidos = setOfNotNull(HOST_ASSETS, Uri.parse(urlSistema).host)
 
         webView = WebView(this)
         setContentView(webView)
@@ -56,23 +65,29 @@ class MainActivity : Activity() {
             ): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
 
             // A ponte de pagamento fica visível para qualquer página aberta na WebView,
-            // então só deixamos navegar pelos endereços da própria lojinha.
+            // então só deixamos navegar pelo GESCS e pelas páginas locais do app.
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
-            ): Boolean = request.url.host !in HOSTS_PERMITIDOS
+            ): Boolean = request.url.host !in hostsPermitidos
+
+            // Sem internet ao abrir: mostra uma tela local com botão "Tentar de novo".
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError
+            ) {
+                if (request.isForMainFrame && request.url.host != HOST_ASSETS) {
+                    view.loadUrl("$URL_SEM_CONEXAO?voltar=" + Uri.encode(urlSistema))
+                }
+            }
         }
 
         // Expõe a ponte de pagamento ao JavaScript como window.AndroidPagamento
         bridge = PagBankBridge(this, webView)
         webView.addJavascriptInterface(bridge, "AndroidPagamento")
 
-        // Onde carregar a UI:
-        // - OFFLINE (recomendado para caixa): copie o build (pasta dist/) do seu app web
-        //   para app/src/main/assets/ e mantenha a URL abaixo.
-        // - ONLINE: aponte para o seu deploy, ex.: webView.loadUrl("https://lojinha.gescs.org.br")
-        //   (a ponte AndroidPagamento continua disponível do mesmo jeito).
-        webView.loadUrl(URL_INICIAL)
+        webView.loadUrl(urlSistema)
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION") // API antiga, mas é a que existe no Android das maquininhas
@@ -83,15 +98,13 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        bridge.encerrar()
         webView.destroy()
         super.onDestroy()
     }
 
     companion object {
-        const val URL_INICIAL = "https://appassets.androidplatform.net/assets/index.html"
-
-        // Se for carregar a UI de um deploy online, adicione o domínio aqui também.
-        val HOSTS_PERMITIDOS = setOf("appassets.androidplatform.net")
+        /** Páginas locais (app/src/main/assets e web/) servidas pelo WebViewAssetLoader. */
+        const val HOST_ASSETS = "appassets.androidplatform.net"
+        const val URL_SEM_CONEXAO = "https://$HOST_ASSETS/assets/sem-conexao.html"
     }
 }
