@@ -27,10 +27,18 @@
       console.log("[MOCK] pagar", p);
       cancelado = false;
 
+      const invalido =
+        p.valorCentavos < 100 ? "O valor mínimo para cobrar na maquininha é R$ 1,00." :
+        p.parcelas > 1 && p.valorCentavos < 1000 ? "Parcelamento só a partir de R$ 10,00." : "";
+      if (invalido) {
+        responder({ callbackId: p.callbackId, ok: false, aprovado: false, categoria: "dados_invalidos", dica: invalido, codigoErro: "DADOS_INVALIDOS", mensagem: invalido });
+        return;
+      }
+
       evento(p.metodo === "pix" ? "LEIA O QR CODE" : "APROXIME, INSIRA OU PASSE O CARTÃO", 0);
       await esperar(1200);
       if (cancelado) {
-        responder({ callbackId: p.callbackId, ok: false, aprovado: false, codigoErro: "-1028", mensagem: "OPERAÇÃO CANCELADA" });
+        responder({ callbackId: p.callbackId, ok: false, aprovado: false, categoria: "cancelado", dica: "Operação cancelada.", codigoErro: "C13", mensagem: "OPERAÇÃO CANCELADA", metodo: p.metodo });
         return;
       }
       if (p.metodo !== "pix") { evento("SENHA: ****", 16); await esperar(700); }
@@ -51,7 +59,10 @@
         ok: aprovar,
         aprovado: aprovar,
         resultado: aprovar ? 0 : -1,
-        codigoErro: aprovar ? "" : "M001",
+        categoria: aprovar ? "aprovado" : "recusado",
+        dica: aprovar ? "Pagamento aprovado." : "Pagamento recusado. Peça outro cartão ou outra forma de pagamento.",
+        codigoErro: aprovar ? "0000" : "R 51",
+        metodo: p.metodo,
         mensagem: aprovar ? "TRANSAÇÃO APROVADA (simulado)" : "TRANSAÇÃO NEGADA (simulado)",
         codigoTransacao: aprovar ? "MOCK" + Date.now() : "",
         idTransacao: aprovar ? "id_" + Date.now() : "",
@@ -78,8 +89,29 @@
     estornar: async function (dadosJson) {
       const d = JSON.parse(dadosJson);
       await esperar(800);
-      const ok = window.confirm("[SIMULAÇÃO] Estornar transação " + d.codigoTransacao + "?");
-      responder({ callbackId: d.callbackId, ok, aprovado: ok, mensagem: ok ? "ESTORNO APROVADO (simulado)" : "ESTORNO NEGADO (simulado)", codigoTransacao: d.codigoTransacao, idTransacao: d.idTransacao });
+      const tipo = d.metodo === "pix" ? "QR Code (PIX)" : "cartão";
+      const ok = window.confirm("[SIMULAÇÃO] Estornar transação " + d.codigoTransacao + " (" + tipo + ")?");
+      responder({
+        callbackId: d.callbackId, ok, aprovado: ok, metodo: d.metodo,
+        categoria: ok ? "aprovado" : "cancelado", dica: ok ? "Estorno aprovado." : "Operação cancelada.",
+        mensagem: ok ? "ESTORNO APROVADO (simulado)" : "ESTORNO CANCELADO (simulado)",
+        codigoTransacao: d.codigoTransacao, idTransacao: d.idTransacao,
+      });
+    },
+
+    calcularParcelas: async function (valorCentavos, parcelamento, callbackId) {
+      await esperar(300);
+      const opcoes = [{ parcelas: 1, valorParcelaCentavos: valorCentavos, totalCentavos: valorCentavos }];
+      if (valorCentavos >= 1000) {
+        for (let n = 2; n <= 12; n++) {
+          // juros fictícios de 2,99% a.m. quando o comprador paga
+          const total = parcelamento === "comprador" ? Math.round(valorCentavos * Math.pow(1.0299, n)) : valorCentavos;
+          const parcela = Math.ceil(total / n);
+          if (parcela < 500) break; // parcela mínima fictícia de R$ 5,00
+          opcoes.push({ parcelas: n, valorParcelaCentavos: parcela, totalCentavos: total });
+        }
+      }
+      responder({ callbackId, ok: true, opcoes });
     },
 
     reimprimir: async function (via, callbackId) {

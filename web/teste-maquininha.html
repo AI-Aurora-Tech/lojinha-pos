@@ -39,10 +39,16 @@
       <option value="voucher">Voucher (vale)</option>
     </select>
 
-    <label for="parcelas">Parcelas (só crédito)</label>
-    <select id="parcelas">
-      <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option>
-    </select>
+    <div id="blocoParcelas">
+      <label for="parcelamento">Juros do parcelado</label>
+      <select id="parcelamento">
+        <option value="vendedor">Sem juros para o cliente (loja paga)</option>
+        <option value="comprador">Com juros (cliente paga)</option>
+      </select>
+
+      <label for="parcelas">Parcelas</label>
+      <select id="parcelas"><option value="1">1x</option></select>
+    </div>
 
     <button id="btnCobrar">Concluir venda</button>
   </div>
@@ -70,7 +76,7 @@
   <script type="module">
     import {
       cobrar, cancelarCobranca, estornar, reimprimir, ultimaTransacao,
-      verificarTerminal, aoEventoMaquininha,
+      verificarTerminal, aoEventoMaquininha, calcularParcelas,
     } from "./pagamento.js";
 
     const $ = (id) => document.getElementById(id);
@@ -79,6 +85,37 @@
     function mostrar(titulo, obj) {
       $("log").textContent = titulo + "\n" + JSON.stringify(obj, null, 2);
     }
+
+    const reais = (c) => "R$ " + (c / 100).toFixed(2).replace(".", ",");
+    const valorEmCentavos = () => Math.round(parseFloat($("valor").value.replace(/\./g, "").replace(",", ".")) * 100) || 0;
+
+    // Atualiza as opções de parcelas (com o valor de cada uma) quando muda valor/método/juros.
+    let pedidoParcelas = 0;
+    async function atualizarParcelas() {
+      const credito = $("metodo").value === "credito";
+      $("blocoParcelas").style.display = credito ? "" : "none";
+      const valor = valorEmCentavos();
+      const select = $("parcelas");
+      const meu = ++pedidoParcelas;
+      if (!credito || valor < 1000) {
+        select.innerHTML = '<option value="1">1x</option>';
+        return;
+      }
+      try {
+        const opcoes = await calcularParcelas(valor, $("parcelamento").value);
+        if (meu !== pedidoParcelas) return; // chegou resposta de um valor antigo
+        const escolhida = select.value; // mantém a escolha da vendedora se ainda existir
+        select.innerHTML = opcoes
+          .map((o) => `<option value="${o.parcelas}">${o.parcelas}x de ${reais(o.valorParcelaCentavos)}` +
+            (o.totalCentavos !== valor ? ` (total ${reais(o.totalCentavos)})` : "") + "</option>")
+          .join("");
+        if (opcoes.some((o) => String(o.parcelas) === escolhida)) select.value = escolhida;
+      } catch (e) {
+        console.warn("parcelas:", e.message);
+      }
+    }
+    ["valor", "metodo", "parcelamento"].forEach((id) => $(id).addEventListener("change", atualizarParcelas));
+    atualizarParcelas();
 
     aoEventoMaquininha((mensagem) => {
       if (mensagem) $("mensagemMaquina").textContent = mensagem;
@@ -93,20 +130,21 @@
       .catch((e) => ($("status").textContent = e.message));
 
     $("btnCobrar").onclick = async () => {
-      const valorCentavos = Math.round(parseFloat($("valor").value.replace(/\./g, "").replace(",", ".")) * 100);
+      const valorCentavos = valorEmCentavos();
       const metodo = $("metodo").value;
-      const parcelas = Number($("parcelas").value);
+      const parcelas = metodo === "credito" ? Number($("parcelas").value) : 1;
+      const parcelamento = $("parcelamento").value;
       const referencia = "T" + Date.now().toString().slice(-9); // até 10 caracteres
 
       $("mensagemMaquina").textContent = "Enviando para a maquininha...";
       $("overlay").classList.add("ativo");
       try {
-        const r = await cobrar({ valorCentavos, metodo, parcelas, referencia });
+        const r = await cobrar({ valorCentavos, metodo, parcelas, parcelamento, referencia });
         if (r.aprovado) {
           ultimaVenda = r;
           $("btnEstornar").disabled = false;
         }
-        mostrar(r.aprovado ? "✅ APROVADO" : "❌ NÃO APROVADO", r);
+        mostrar(r.aprovado ? "✅ APROVADO" : "❌ " + r.dica, r);
       } catch (e) {
         mostrar("Erro", { mensagem: e.message });
       } finally {
@@ -125,7 +163,7 @@
       try {
         const r = await estornar(ultimaVenda);
         if (r.aprovado) { ultimaVenda = null; $("btnEstornar").disabled = true; }
-        mostrar(r.aprovado ? "✅ ESTORNO APROVADO" : "❌ ESTORNO NÃO APROVADO", r);
+        mostrar(r.aprovado ? "✅ ESTORNO APROVADO" : "❌ ESTORNO NÃO APROVADO: " + r.dica, r);
       } catch (e) {
         mostrar("Erro", { mensagem: e.message });
       } finally {

@@ -10,8 +10,8 @@
 //
 //   aoEventoMaquininha((msg) => setMensagem(msg));   // "APROXIME OU INSIRA O CARTÃO"...
 //   const r = await cobrar({ valorCentavos: 1550, metodo: "credito", referencia: venda.id });
-//   if (r.aprovado) { salvarVenda({ ...venda, codigoTransacao: r.codigoTransacao, idTransacao: r.idTransacao }); }
-//   else { alert("Pagamento não aprovado: " + r.mensagem); }
+//   if (r.aprovado) { salvarVenda({ ...venda, metodo: r.metodo, codigoTransacao: r.codigoTransacao, idTransacao: r.idTransacao }); }
+//   else { alert(r.dica); }   // texto pronto para a vendedora; r.categoria diz o motivo
 // ============================================================================
 
 const pendentes = {};
@@ -83,9 +83,16 @@ function chamar(executar) {
  * @param {"vendedor"|"comprador"} [p.parcelamento="vendedor"]  quem paga os juros do parcelado
  * @param {string} [p.referencia]    id da venda no seu sistema (até 10 letras/números)
  * @param {boolean} [p.imprimirComprovante=true]
- * @returns {Promise<{aprovado:boolean, mensagem:string, codigoErro:string,
- *   codigoTransacao:string, idTransacao:string, nsu:string, autorizacao:string,
+ * Valor mínimo R$ 1,00; parcelado a partir de R$ 10,00.
+ *
+ * @returns {Promise<{aprovado:boolean, categoria:string, dica:string, mensagem:string, codigoErro:string,
+ *   metodo:string, codigoTransacao:string, idTransacao:string, nsu:string, autorizacao:string,
  *   bandeira:string, valor:string, data:string, hora:string}>}
+ *
+ * categoria: "aprovado" | "cancelado" | "recusado" | "recusado_risco" | "senha_incorreta" |
+ *   "erro_comunicacao" | "erro_leitura" | "tipo_cartao" | "duplicado" | "tempo_esgotado" |
+ *   "ocupado" | "nao_autenticado" | "servico_ausente" | "dados_invalidos" | "outro"
+ * dica: frase pronta para mostrar à vendedora.
  */
 export function cobrar({ valorCentavos, metodo, parcelas = 1, parcelamento = "vendedor", referencia = "", imprimirComprovante = true }) {
   const valor = Math.round(Number(valorCentavos));
@@ -104,11 +111,27 @@ export function cancelarCobranca() {
   if (maquininhaDisponivel()) window.AndroidPagamento.cancelar();
 }
 
-/** Estorna (devolve) uma venda aprovada usando os códigos retornados pelo cobrar(). */
-export function estornar({ codigoTransacao, idTransacao, imprimirComprovante = true }) {
+/**
+ * Estorna (devolve) uma venda aprovada. Passe os dados que o cobrar() devolveu:
+ * codigoTransacao, idTransacao e metodo (o PIX usa um tipo de estorno diferente do cartão).
+ */
+export function estornar({ codigoTransacao, idTransacao, metodo = "", tipoPagamento = 0, imprimirComprovante = true }) {
   return chamar((callbackId) =>
-    window.AndroidPagamento.estornar(JSON.stringify({ callbackId, codigoTransacao, idTransacao, imprimirComprovante }))
+    window.AndroidPagamento.estornar(
+      JSON.stringify({ callbackId, codigoTransacao, idTransacao, metodo, tipoPagamento: tipoPagamento || 0, imprimirComprovante })
+    )
   );
+}
+
+/**
+ * Opções de parcelamento no crédito, com o valor de cada parcela calculado pela PagBank.
+ * Sempre inclui 1x. Ex.: [{ parcelas: 1, valorParcelaCentavos: 3000, totalCentavos: 3000 }, { parcelas: 2, ... }]
+ * @param {"vendedor"|"comprador"} parcelamento  quem paga os juros
+ */
+export function calcularParcelas(valorCentavos, parcelamento = "vendedor") {
+  return chamar((callbackId) =>
+    window.AndroidPagamento.calcularParcelas(Math.round(Number(valorCentavos)), parcelamento, callbackId)
+  ).then((r) => (r.ok ? r.opcoes : Promise.reject(new Error(r.dica || r.mensagem))));
 }
 
 /** Reimprime o último comprovante. via = "cliente" | "estabelecimento". */

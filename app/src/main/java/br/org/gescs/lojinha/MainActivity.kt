@@ -83,7 +83,6 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        bridge.encerrar()
         webView.destroy()
         super.onDestroy()
     }

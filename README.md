@@ -19,7 +19,8 @@ preenchido. Ninguém digita valor na maquininha.
 
 | Arquivo | O que faz |
 |---|---|
-| `app/src/main/java/.../PagBankBridge.kt` | Fala com o SDK PlugPagServiceWrapper 1.35.0: pagar, cancelar, estornar, reimprimir, consultar. |
+| `app/src/main/java/.../PagBankBridge.kt` | Fala com o SDK PlugPagServiceWrapper 1.35.0: pagar, cancelar, estornar, parcelas, reimprimir, consultar. |
+| `app/src/main/java/.../Maquininha.kt` | Instância única do SDK e a fila que impede duas operações ao mesmo tempo. |
 | `app/src/main/java/.../MainActivity.kt` | Abre a UI web numa WebView e expõe a ponte como `window.AndroidPagamento`. |
 | `web/pagamento.js` | Biblioteca JS (Promises) para usar na sua UI React. **Copie para o seu app web.** |
 | `web/mock-android-pagamento.js` | Simulador da maquininha para testar no navegador do PC. |
@@ -46,18 +47,27 @@ function ConcluirVenda({ venda }) {
       referencia: venda.id,                 // até 10 letras/números
     });
     if (r.aprovado) {
-      // guarde codigoTransacao e idTransacao: são necessários para estornar depois
-      salvarVenda({ ...venda, codigoTransacao: r.codigoTransacao, idTransacao: r.idTransacao, nsu: r.nsu });
+      // guarde metodo, codigoTransacao e idTransacao: são necessários para estornar depois
+      salvarVenda({ ...venda, metodo: r.metodo, codigoTransacao: r.codigoTransacao, idTransacao: r.idTransacao, nsu: r.nsu });
     } else {
-      alert("Pagamento não aprovado: " + r.mensagem);
+      alert(r.dica); // ex.: "Senha incorreta. Tente de novo."
     }
   }
   // mostre `mensagem` numa tela de espera com um botão que chama cancelarCobranca()
 }
 ```
 
-Outras funções: `estornar({ codigoTransacao, idTransacao })`, `reimprimir("cliente" | "estabelecimento")`,
-`ultimaTransacao()`, `verificarTerminal()`, `ativarTerminal(codigo)`, `maquininhaDisponivel()`.
+Quando não é aprovado, `r.categoria` diz o motivo (`cancelado`, `recusado`, `senha_incorreta`,
+`erro_comunicacao`, `tempo_esgotado`, `duplicado`, `ocupado`...) e `r.dica` traz uma frase pronta para a vendedora.
+As categorias seguem a lista de códigos de erro do app de exemplo oficial.
+
+Limites (os mesmos do exemplo oficial): mínimo R$ 1,00; parcelado a partir de R$ 10,00.
+
+Outras funções:
+
+- `calcularParcelas(valorCentavos, "vendedor" | "comprador")`: opções com o valor de cada parcela, calculado pela PagBank.
+- `estornar({ codigoTransacao, idTransacao, metodo })`: passe o `metodo`, porque o estorno de PIX é diferente do de cartão.
+- `reimprimir("cliente" | "estabelecimento")`, `ultimaTransacao()`, `verificarTerminal()`, `ativarTerminal(codigo)`, `maquininhaDisponivel()`.
 
 Para testar no navegador do PC, carregue o simulador só em desenvolvimento:
 
@@ -92,30 +102,59 @@ Pré-requisitos: Android Studio (JDK 17). Abra a pasta do repo e espere o Gradle
 
 O APK sai em `app/build/outputs/apk/debug/app-debug.apk`.
 
-- **Terminal de desenvolvimento/debug** (fornecido pela PagBank durante a homologação):
-  instale com `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
-  Abra o app e toque em "Abrir tela de teste da maquininha".
 - **Maquininhas de produção** não aceitam instalar APK por fora: o app só chega a elas
   pela loja da PagBank depois de homologado e assinado.
+
+### Terminal de desenvolvimento (DEBUG)
+
+A PagBank fornece um terminal de testes (modelos GERTEC GPOS780 ou SUNMI P2, com marca d'água
+na tela). As transações são simuladas e não cobram de verdade. Ele chega já ativado.
+
+1. Antes de testar, atualize os aplicativos de serviço pela **Loja de Aplicativos** do terminal.
+2. Conecte o terminal ao computador por USB (o terminal DEBUG aceita ADB; confira com `adb devices`).
+3. Instale o app:
+
+   ```bash
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+4. Abra "Lojinha GESCS" e toque em "Abrir tela de teste da maquininha".
+5. Para ver os logs da integração:
+
+   ```bash
+   adb logcat -s PagBankBridge
+   ```
+
+Se o terminal não aparecer ativado ou tiver divergências, abra um chamado na PagBank com o número
+de série (aparece no topo da tela de teste).
+
+### App de exemplo oficial (SmartCoffee)
+
+O [SmartCoffee](https://github.com/pagseguro/pagseguro-plugpagservicewrapper-smartcoffeedemo) é o
+app de demonstração da PagBank, com a mesma versão do SDK (1.35.0). Vale instalá-lo no terminal
+DEBUG para comparar: se algo funciona no SmartCoffee e não na lojinha, o problema está no nosso app.
+Esta integração segue as recomendações dele: SDK como instância única, uma operação por vez,
+`isServiceBusy`/`isAuthenticated` antes de cobrar, estorno de PIX com `VOID_QRCODE` e o popup
+"Imprimir via do cliente?".
 
 ## 4. Roteiro de testes para a homologação
 
 Use `teste-maquininha.html` (ou a sua UI) no terminal de debug e confira:
 
-- [ ] Status mostra o terminal **autenticado** (se não, use `ativarTerminal` com o código da conta).
-- [ ] Crédito à vista aprovado, comprovante impresso.
-- [ ] Crédito parcelado (2x ou mais).
+- [ ] Status mostra o terminal **autenticado** (o terminal DEBUG já vem ativado).
+- [ ] Crédito à vista aprovado, comprovante impresso e popup "Imprimir via do cliente?".
+- [ ] Crédito parcelado (2x ou mais), com juros do vendedor e do comprador; os valores das parcelas aparecem na lista.
+- [ ] Valor abaixo de R$ 1,00 é recusado antes de ir para a maquininha.
 - [ ] Débito aprovado com senha (a tela mostra `SENHA: ****`).
 - [ ] PIX aprovado.
 - [ ] Cartão negado / senha errada → UI mostra "não aprovado" com a mensagem da maquininha.
 - [ ] Cancelar durante "aproxime ou insira o cartão" → volta para a UI sem cobrar.
-- [ ] Estorno de uma venda aprovada.
+- [ ] Estorno de uma venda no cartão **e** de uma venda no PIX.
 - [ ] Reimpressão da via do cliente e do estabelecimento.
 - [ ] Clicar "Concluir venda" duas vezes seguidas → a segunda é recusada com `OCUPADO`.
 
 ## Observações
 
 - O SDK vem do repositório Maven oficial `https://github.com/pagseguro/PlugPagServiceWrapper/raw/master`.
-  Ele usa RxJava 2 internamente sem declarar a dependência, por isso o `app/build.gradle` inclui `rxjava` e `rxandroid`.
 - `applicationId` (`br.org.gescs.lojinha`) não deve mudar depois de homologado.
 - Se o app fechar no meio de uma cobrança, use `ultimaTransacao()` para conferir se ela foi aprovada antes de cobrar de novo.
