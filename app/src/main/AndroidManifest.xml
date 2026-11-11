@@ -4,31 +4,37 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!--
-      TODO (PlugPag) — ETAPA OBRIGATÓRIA ANTES DE RODAR NO TERMINAL:
-      Adicionar aqui a permissão de bind ao PlugPagService e o intent-filter que
-      registra este app como aplicação de pagamento (para receber os Intents de
-      inserção de cartão). As strings EXATAS variam conforme a versão do wrapper,
-      então copie-as da documentação oficial "Guide" do PlugPagServiceWrapper
-      (seção AndroidManifest). Não invente esses valores — use os da doc da sua versão.
-    -->
+    <!-- Permite que o app se conecte ao PlugPagService (o serviço de pagamento da Moderninha Smart). -->
+    <uses-permission android:name="br.com.uol.pagseguro.permission.MANAGE_PAYMENTS" />
 
     <application
         android:allowBackup="false"
         android:label="Lojinha GESCS"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <!--
+          singleTask: quando o terminal reabre o app (ex.: cartão inserido), reaproveita
+          a mesma tela em vez de abrir outra por cima no meio de uma venda.
+          configChanges: evita recriar a WebView (e perder a venda) se a tela girar.
+        -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|screenLayout">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- TODO (PlugPag): intent-filter adicional de app de pagamento padrão (ver doc). -->
+            <!-- Registra o app como aplicação de pagamento na Moderninha Smart. -->
+            <intent-filter>
+                <action android:name="br.com.uol.pagseguro.PAYMENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 
         </activity>
     </application>

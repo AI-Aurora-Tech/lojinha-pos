@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste da maquininha - Lojinha GESCS</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; margin: 0; padding: 16px; background: #f4f4f4; color: #222; }
+    h2 { margin: 0 0 4px; }
+    .card { background: #fff; border-radius: 10px; padding: 14px; margin: 12px 0; }
+    label { display: block; font-size: 15px; margin: 8px 0 4px; }
+    input, select { font-size: 22px; padding: 10px; width: 100%; }
+    button { font-size: 20px; padding: 16px; width: 100%; margin: 6px 0; border: 0; border-radius: 8px; background: #1b6b3a; color: #fff; }
+    button.sec { background: #555; }
+    button.perigo { background: #b3261e; }
+    button:disabled { opacity: .5; }
+    #status { font-size: 14px; color: #555; }
+    pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: #eee; padding: 8px; border-radius: 6px; }
+    #overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); color: #fff; padding: 24px;
+               flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+    #overlay.ativo { display: flex; }
+    #mensagemMaquina { font-size: 28px; font-weight: bold; margin: 24px 0; min-height: 2.4em; }
+  </style>
+</head>
+<body>
+  <h2>Teste da maquininha</h2>
+  <div id="status">Verificando terminal...</div>
+
+  <div class="card">
+    <label for="valor">Valor (R$)</label>
+    <input id="valor" inputmode="decimal" value="1,00" />
+
+    <label for="metodo">Método</label>
+    <select id="metodo">
+      <option value="credito">Crédito</option>
+      <option value="debito">Débito</option>
+      <option value="pix">PIX</option>
+      <option value="voucher">Voucher (vale)</option>
+    </select>
+
+    <label for="parcelas">Parcelas (só crédito)</label>
+    <select id="parcelas">
+      <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option>
+    </select>
+
+    <button id="btnCobrar">Concluir venda</button>
+  </div>
+
+  <div class="card">
+    <button class="perigo" id="btnEstornar" disabled>Estornar última venda deste teste</button>
+    <button class="sec" id="btnViaCliente">Reimprimir via do cliente</button>
+    <button class="sec" id="btnViaLoja">Reimprimir via do estabelecimento</button>
+    <button class="sec" id="btnUltima">Consultar última transação aprovada</button>
+  </div>
+
+  <div class="card">
+    <strong>Resultado</strong>
+    <pre id="log">—</pre>
+  </div>
+
+  <div id="overlay">
+    <div>Siga as instruções na maquininha</div>
+    <div id="mensagemMaquina">Enviando para a maquininha...</div>
+    <button class="perigo" id="btnCancelar" style="max-width: 360px">Cancelar cobrança</button>
+  </div>
+
+  <!-- Simulador: só age no navegador do PC; dentro da maquininha ele não faz nada. -->
+  <script src="mock-android-pagamento.js"></script>
+  <script type="module">
+    import {
+      cobrar, cancelarCobranca, estornar, reimprimir, ultimaTransacao,
+      verificarTerminal, aoEventoMaquininha,
+    } from "./pagamento.js";
+
+    const $ = (id) => document.getElementById(id);
+    let ultimaVenda = null;
+
+    function mostrar(titulo, obj) {
+      $("log").textContent = titulo + "\n" + JSON.stringify(obj, null, 2);
+    }
+
+    aoEventoMaquininha((mensagem) => {
+      if (mensagem) $("mensagemMaquina").textContent = mensagem;
+    });
+
+    verificarTerminal()
+      .then((t) => {
+        $("status").textContent =
+          (t.modelo || "Terminal") + " • série " + (t.serial || "?") + " • " +
+          (t.autenticado ? "autenticado ✅" : "NÃO autenticado ⚠️ (ative a maquininha)");
+      })
+      .catch((e) => ($("status").textContent = e.message));
+
+    $("btnCobrar").onclick = async () => {
+      const valorCentavos = Math.round(parseFloat($("valor").value.replace(/\./g, "").replace(",", ".")) * 100);
+      const metodo = $("metodo").value;
+      const parcelas = Number($("parcelas").value);
+      const referencia = "T" + Date.now().toString().slice(-9); // até 10 caracteres
+
+      $("mensagemMaquina").textContent = "Enviando para a maquininha...";
+      $("overlay").classList.add("ativo");
+      try {
+        const r = await cobrar({ valorCentavos, metodo, parcelas, referencia });
+        if (r.aprovado) {
+          ultimaVenda = r;
+          $("btnEstornar").disabled = false;
+        }
+        mostrar(r.aprovado ? "✅ APROVADO" : "❌ NÃO APROVADO", r);
+      } catch (e) {
+        mostrar("Erro", { mensagem: e.message });
+      } finally {
+        $("overlay").classList.remove("ativo");
+      }
+    };
+
+    $("btnCancelar").onclick = () => {
+      $("mensagemMaquina").textContent = "Cancelando...";
+      cancelarCobranca();
+    };
+
+    $("btnEstornar").onclick = async () => {
+      if (!ultimaVenda || !confirm("Estornar a venda " + ultimaVenda.codigoTransacao + "?")) return;
+      $("overlay").classList.add("ativo");
+      try {
+        const r = await estornar(ultimaVenda);
+        if (r.aprovado) { ultimaVenda = null; $("btnEstornar").disabled = true; }
+        mostrar(r.aprovado ? "✅ ESTORNO APROVADO" : "❌ ESTORNO NÃO APROVADO", r);
+      } catch (e) {
+        mostrar("Erro", { mensagem: e.message });
+      } finally {
+        $("overlay").classList.remove("ativo");
+      }
+    };
+
+    const acao = (fn, titulo) => async () => {
+      try { mostrar(titulo, await fn()); } catch (e) { mostrar("Erro", { mensagem: e.message }); }
+    };
+    $("btnViaCliente").onclick = acao(() => reimprimir("cliente"), "Reimpressão via cliente");
+    $("btnViaLoja").onclick = acao(() => reimprimir("estabelecimento"), "Reimpressão via estabelecimento");
+    $("btnUltima").onclick = acao(ultimaTransacao, "Última transação aprovada");
+  </script>
+</body>
+</html>
