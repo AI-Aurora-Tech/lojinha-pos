@@ -14,6 +14,9 @@ android {
         targetSdk 28    // conservador para o Android das maquininhas
         versionCode 1
         versionName "1.0.0"
+
+        // Página do GESCS que esta maquininha abre (definida em gradle.properties).
+        resValue "string", "url_sistema", project.findProperty("urlSistema") ?: "https://gescs.vercel.app/maquininha"
     }
 
     buildTypes {
