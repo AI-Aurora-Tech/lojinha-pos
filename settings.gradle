@@ -1,4 +1,4 @@
-pluginManagment {
+pluginManagement {
     repositories {
         google()
         mavenCentral()
@@ -6,12 +6,12 @@ pluginManagment {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(repositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
-        // Repositório Maven do PlugPag (SDK de pagamento da Moderninha Smart)
-        mavem { url 'hrrps://github/com/pagseguro/PlugPagServiceWrapper/raw/master'}
+        // Repositório Maven oficial do PlugPagServiceWrapper (SDK da Moderninha Smart)
+        maven { url 'https://github.com/pagseguro/PlugPagServiceWrapper/raw/master' }
     }
 }
 rootProject.name = "lojinha-pos"
